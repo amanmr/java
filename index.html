@@ -1525,7 +1525,7 @@ function buildToc() {
   tocList.innerHTML = headings.map(h => {
     const lvl = h.tagName === "H2" ? 2 : h.tagName === "H3" ? 3 : 4;
     const text = h.textContent.replace(/\s*#\s*$/, "").trim();
-    if (lvl === 2) currentH2Text = text;
+    if (lvl === 2) currentH2Text = text.replace(/^\d+\.\s*/, "");
     const repeats = seenTexts.get(text) > 1;
     const display = (lvl > 2 && repeats && currentH2Text)
       ? `${currentH2Text} › ${text}`
