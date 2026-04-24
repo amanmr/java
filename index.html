@@ -1479,9 +1479,7 @@ async function renderDoc(slug, hash = "") {
     doc.classList.add("fade-in");
     requestAnimationFrame(() => {
       if (hash) {
-        const el = document.getElementById(hash);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-        else window.scrollTo({ top: 0 });
+        if (!scrollToHeading(hash, false)) window.scrollTo({ top: 0 });
       } else {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
@@ -1507,11 +1505,13 @@ function renderHome() {
 
 // ========== TOC ==========
 let tocObserver = null;
+let tocClickHandler = null;
 function buildToc() {
   const tocList = $("#tocList");
   const body = $("#docBody");
   const headings = $$("h2, h3, h4", body).filter(h => h.id && h.style.display !== "none");
   if (tocObserver) { tocObserver.disconnect(); tocObserver = null; }
+  if (tocClickHandler) { tocList.removeEventListener("click", tocClickHandler); tocClickHandler = null; }
   if (headings.length === 0) { $("#docToc").style.display = "none"; tocList.innerHTML = ""; return; }
   $("#docToc").style.display = "";
 
@@ -1530,8 +1530,28 @@ function buildToc() {
     const display = (lvl > 2 && repeats && currentH2Text)
       ? `${currentH2Text} › ${text}`
       : text;
-    return `<a class="toc-link lvl-${lvl}" href="#doc/${state.currentSlug || ""}#${h.id}" data-toc="${h.id}">${escapeHtml(display)}</a>`;
+    return `<a class="toc-link lvl-${lvl}" href="#doc/${state.currentSlug || ""}#${h.id}" data-toc="${h.id}" data-heading-id="${h.id}">${escapeHtml(display)}</a>`;
   }).join("");
+
+  // Intercept clicks: scroll directly to the target, then update the URL.
+  // This avoids the browser's unreliable behavior with two `#` characters in a hash.
+  tocClickHandler = (e) => {
+    const link = e.target.closest(".toc-link");
+    if (!link) return;
+    const id = link.dataset.headingId;
+    if (!id) return;
+    e.preventDefault();
+    const target = document.getElementById(id);
+    if (!target) return;
+    const top = target.getBoundingClientRect().top + window.pageYOffset - 80;
+    window.scrollTo({ top, behavior: "smooth" });
+    const newHash = `#doc/${state.currentSlug || ""}#${id}`;
+    if (location.hash !== newHash) {
+      history.replaceState(null, "", newHash);
+    }
+    $$(".toc-link", tocList).forEach(l => l.classList.toggle("active", l === link));
+  };
+  tocList.addEventListener("click", tocClickHandler);
 
   const links = $$(".toc-link", tocList);
   tocObserver = new IntersectionObserver((entries) => {
@@ -1595,13 +1615,20 @@ function parseHash() {
   return { view: "home" };
 }
 
+function scrollToHeading(id, smooth = true) {
+  const el = document.getElementById(id);
+  if (!el) return false;
+  const top = el.getBoundingClientRect().top + window.pageYOffset - 80;
+  window.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
+  return true;
+}
+
 function handleRoute() {
   const { view, slug, hash } = parseHash();
   if (view === "doc") {
     if (slug === state.currentSlug) {
       if (hash) {
-        const el = document.getElementById(hash);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        scrollToHeading(hash, true);
       } else {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
