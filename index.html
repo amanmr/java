@@ -1506,21 +1506,35 @@ function renderHome() {
 }
 
 // ========== TOC ==========
+let tocObserver = null;
 function buildToc() {
   const tocList = $("#tocList");
   const body = $("#docBody");
   const headings = $$("h2, h3, h4", body).filter(h => h.id && h.style.display !== "none");
-  if (headings.length === 0) { $("#docToc").style.display = "none"; return; }
+  if (tocObserver) { tocObserver.disconnect(); tocObserver = null; }
+  if (headings.length === 0) { $("#docToc").style.display = "none"; tocList.innerHTML = ""; return; }
   $("#docToc").style.display = "";
+
+  const seenTexts = new Map();
+  for (const h of headings) {
+    const t = h.textContent.replace(/\s*#\s*$/, "").trim();
+    seenTexts.set(t, (seenTexts.get(t) || 0) + 1);
+  }
+
+  let currentH2Text = "";
   tocList.innerHTML = headings.map(h => {
     const lvl = h.tagName === "H2" ? 2 : h.tagName === "H3" ? 3 : 4;
     const text = h.textContent.replace(/\s*#\s*$/, "").trim();
-    return `<a class="toc-link lvl-${lvl}" href="#doc/${state.currentSlug || ""}#${h.id}" data-toc="${h.id}">${escapeHtml(text)}</a>`;
+    if (lvl === 2) currentH2Text = text;
+    const repeats = seenTexts.get(text) > 1;
+    const display = (lvl > 2 && repeats && currentH2Text)
+      ? `${currentH2Text} › ${text}`
+      : text;
+    return `<a class="toc-link lvl-${lvl}" href="#doc/${state.currentSlug || ""}#${h.id}" data-toc="${h.id}">${escapeHtml(display)}</a>`;
   }).join("");
 
-  // Scrollspy
-  const links = $$(".toc-link");
-  const io = new IntersectionObserver((entries) => {
+  const links = $$(".toc-link", tocList);
+  tocObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
         const id = entry.target.id;
@@ -1528,7 +1542,7 @@ function buildToc() {
       }
     });
   }, { rootMargin: "-80px 0px -70% 0px", threshold: 0 });
-  headings.forEach(h => io.observe(h));
+  headings.forEach(h => tocObserver.observe(h));
 }
 
 // ========== Copy buttons ==========
@@ -1583,8 +1597,20 @@ function parseHash() {
 
 function handleRoute() {
   const { view, slug, hash } = parseHash();
-  if (view === "doc") renderDoc(slug, hash);
-  else renderHome();
+  if (view === "doc") {
+    if (slug === state.currentSlug) {
+      if (hash) {
+        const el = document.getElementById(hash);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    } else {
+      renderDoc(slug, hash);
+    }
+  } else {
+    renderHome();
+  }
   closeSidebar();
 }
 
