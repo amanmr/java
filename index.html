@@ -137,6 +137,22 @@ a:hover { color: var(--accent-2); }
   background: var(--bg-glass);
   border-bottom: 1px solid var(--border);
 }
+.page-progress {
+  position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 3px;
+  background: transparent;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.page-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
+  transition: width .08s linear;
+}
+body[data-view="doc"] .page-progress { opacity: 1; }
 .topbar-inner {
   max-width: var(--maxw);
   margin: 0 auto;
@@ -987,6 +1003,9 @@ window.__JM_CONTENT__ = {"01-core-java-basics": "# Core Java — The Basics\n\n<
       </button>
     </div>
   </div>
+  <div class="page-progress" id="pageProgress" aria-hidden="true">
+    <div class="page-progress-bar" id="pageProgressBar"></div>
+  </div>
 </header>
 
 <div class="layout">
@@ -1535,6 +1554,7 @@ async function renderDoc(slug, hash = "") {
     state.currentSlug = slug;
     markRead(slug);
     updateProgress();
+    requestAnimationFrame(updatePageProgress);
   } catch (err) {
     console.error(err);
     $("#docBody").innerHTML = `<p style="color:#ef4444">Failed to render this document: ${escapeHtml(err.message)}</p>`;
@@ -1673,6 +1693,7 @@ function scrollToHeading(id, smooth = true) {
 function handleRoute() {
   const { view, slug, hash } = parseHash();
   if (view === "doc") {
+    document.body.dataset.view = "doc";
     if (slug === state.currentSlug) {
       if (hash) {
         scrollToHeading(hash, true);
@@ -1683,9 +1704,31 @@ function handleRoute() {
       renderDoc(slug, hash);
     }
   } else {
+    document.body.dataset.view = "home";
     renderHome();
   }
   closeSidebar();
+  updatePageProgress();
+}
+
+// ========== Per-page scroll progress ==========
+function updatePageProgress() {
+  const bar = document.getElementById("pageProgressBar");
+  if (!bar) return;
+  if (document.body.dataset.view !== "doc") {
+    bar.style.width = "0%";
+    return;
+  }
+  const doc = document.getElementById("doc");
+  if (!doc || doc.hidden) { bar.style.width = "0%"; return; }
+  const rect = doc.getBoundingClientRect();
+  const docTop = rect.top + window.pageYOffset;
+  const docHeight = doc.offsetHeight;
+  const viewportH = window.innerHeight;
+  const scrolled = window.pageYOffset - docTop;
+  const total = Math.max(1, docHeight - viewportH);
+  const pct = Math.max(0, Math.min(100, (scrolled / total) * 100));
+  bar.style.width = pct.toFixed(2) + "%";
 }
 
 // ========== Search ==========
@@ -1899,6 +1942,17 @@ async function init() {
   });
 
   window.addEventListener("hashchange", handleRoute);
+
+  let scrollRaf = 0;
+  const onScrollOrResize = () => {
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0;
+      updatePageProgress();
+    });
+  };
+  window.addEventListener("scroll", onScrollOrResize, { passive: true });
+  window.addEventListener("resize", onScrollOrResize);
 
   // Build search index + full index in parallel after first paint
   setTimeout(async () => {
